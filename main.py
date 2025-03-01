@@ -195,3 +195,4 @@ if __name__ == "__main__":
     model.to(device)
     top_moves = get_top_moves(fen, model)
     print(f"Top 3 Moves: {top_moves}")
+## AAA
