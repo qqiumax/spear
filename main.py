@@ -7,6 +7,9 @@ from collections import deque
 import random
 import copy
 
+# Check if CUDA is available
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
 # Part 1: FEN Parsing and Legal Move Generation
 def parse_fen(fen):
     board = chess.Board(fen)
@@ -14,7 +17,7 @@ def parse_fen(fen):
     return board, legal_moves
 
 def board_to_tensor(board):
-    tensor = torch.zeros(18, 8, 8)
+    tensor = torch.zeros(18, 8, 8, device=device)
     for square in chess.SQUARES:
         piece = board.piece_at(square)
         if piece:
@@ -115,7 +118,7 @@ class MCTS:
 
 class SelfPlay:
     def __init__(self, model, games=10*(10**10), sims=70):
-        self.model = model
+        self.model = model.to(device)
         self.games = games
         self.sims = sims
         self.memory = deque(maxlen=10*(10**5))
@@ -145,9 +148,9 @@ class SelfPlay:
         for epoch in range(epochs):
             print(f"Epoch {epoch + 1}/{epochs}")
             batch = random.sample(dataset, min(batch_size, len(dataset)))
-            state_batch = torch.stack([x[0] for x in batch])
+            state_batch = torch.stack([x[0] for x in batch]).to(device)
             policy_batch = [x[1] for x in batch]
-            value_batch = torch.tensor([x[2] for x in batch], dtype=torch.float32)
+            value_batch = torch.tensor([x[2] for x in batch], dtype=torch.float32).to(device)
             optimizer.zero_grad()
             policy_pred, value_pred = self.model(state_batch)
             policy_loss = 0.0
@@ -155,7 +158,7 @@ class SelfPlay:
             for i, p in enumerate(policy_batch):
                 legal_indices = [mcts.move_to_index(m, batch[i][0]) for m in p.keys()]
                 log_probs = torch.log_softmax(policy_pred[i].view(-1), dim=0)
-                policy_loss += -torch.sum(torch.tensor(list(p.values())) * log_probs[legal_indices])
+                policy_loss += -torch.sum(torch.tensor(list(p.values()), device=device) * log_probs[legal_indices])
             value_loss = torch.nn.functional.mse_loss(value_pred.squeeze(), value_batch)
             total_loss = policy_loss + value_loss
             total_loss.backward()
@@ -164,7 +167,7 @@ class SelfPlay:
 
 def get_top_moves(fen, model, top_n=3):
     board = chess.Board(fen)
-    tensor = board_to_tensor(board).unsqueeze(0)
+    tensor = board_to_tensor(board).unsqueeze(0).to(device)
     policy, _ = model(tensor)
     policy = torch.softmax(policy.view(-1), dim=0)
     legal_moves = list(board.legal_moves)
@@ -179,8 +182,8 @@ if __name__ == "__main__":
     print(f"Legal Moves: {[move.uci() for move in legal_moves[:5]]}...")
 
     # Part 2 Training
-    model = ChessNet()
-    self_play = SelfPlay(model, games=10*(10**4), sims=70)
+    model = ChessNet().to(device)
+    self_play = SelfPlay(model, games=10*(10**5), sims=100)
     for game in range(self_play.games):
         print(f"Generating game {game + 1}/{self_play.games}")
         self_play.generate_game(game + 1)
@@ -189,5 +192,6 @@ if __name__ == "__main__":
 
     # Part 3 Inference
     model.load_state_dict(torch.load("chess_model.pth"))
+    model.to(device)
     top_moves = get_top_moves(fen, model)
     print(f"Top 3 Moves: {top_moves}")
