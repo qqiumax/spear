@@ -180,7 +180,7 @@ if __name__ == "__main__":
 
     # Part 2 Training
     model = ChessNet()
-    self_play = SelfPlay(model, games=10*(10**4), sims=10000)
+    self_play = SelfPlay(model, games=10*(10**4), sims=70)
     for game in range(self_play.games):
         print(f"Generating game {game + 1}/{self_play.games}")
         self_play.generate_game(game + 1)
